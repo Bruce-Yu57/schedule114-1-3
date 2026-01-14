@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>蘭州國中第三次段考時程顯示</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Roboto+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #0f172a; /* Slate 900 */
+            color: #f8fafc; /* Slate 50 */
+            overflow: hidden; /* 防止捲動條出現 */
+        }
+        
+        .clock-font {
+            font-family: 'Roboto Mono', monospace;
+        }
+
+        /* 自訂捲軸樣式 */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569; 
+            border-radius: 4px;
+        }
+
+        /* --- 高亮樣式設計 (Final Design) --- */
+        .active-period {
+            background-color: #334155; /* Slate 700: 比背景稍亮，維持深色風格 */
+            border: 6px solid #eab308; /* Yellow 500: 醒目的黃色粗框 */
+            transform: scale(1.02);    /* 微微放大 */
+            box-shadow: 0 0 30px rgba(234, 179, 8, 0.25); /* 淡淡的黃色光暈 */
+            z-index: 10;
+        }
+
+        /* 高亮時，時間與科目維持極致白，確保對比度 */
+        .active-period .period-time, 
+        .active-period .period-subject {
+            color: #ffffff; 
+            font-weight: 900;
+        }
+        
+        /* 高亮時，節次名稱 (如"第二節") 轉為黃色以呼應邊框 */
+        .active-period .period-name {
+            color: #facc15; /* Yellow 400 */
+        }
+
+        /* 高亮時，顯示的狀態標籤 */
+        .active-period .status-badge {
+            background-color: #eab308;
+            color: #000000;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="h-[8vh] bg-slate-800 flex items-center justify-between px-8 border-b border-slate-700 shadow-lg shrink-0">
+        <h1 class="text-3xl font-bold tracking-wider text-blue-400">蘭州國中第三次段考時程表</h1>
+        <div class="flex space-x-4">
+            <button onclick="setDay(1)" id="btn-day1" class="px-6 py-2 rounded-lg text-xl font-bold transition-colors duration-200">1/15 (Thu.)</button>
+            <button onclick="setDay(2)" id="btn-day2" class="px-6 py-2 rounded-lg text-xl font-bold transition-colors duration-200">1/16 (Fri.)</button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex overflow-hidden">
+        
+        <!-- Left Side: Schedule (65% width) -->
+        <section class="w-[65%] h-full bg-slate-900 border-r border-slate-700 flex flex-col relative">
+            <div class="flex-1 overflow-y-auto p-4 space-y-3" id="schedule-container">
+                <!-- Schedule items will be injected here via JS -->
+            </div>
+            
+            <!-- 底部提示 -->
+            <div class="h-[6vh] bg-slate-800 flex items-center justify-center border-t border-slate-700 shrink-0">
+                <p class="text-slate-400 text-lg">請同學遵守考場規則，保持安靜。</p>
+            </div>
+        </section>
+
+        <!-- Right Side: Clock (35% width) -->
+        <section class="w-[35%] h-full bg-black flex flex-col items-center justify-center relative">
+            <!-- Current Date -->
+            <div class="text-4xl text-slate-400 mb-4 font-bold" id="clock-date">
+                Loading...
+            </div>
+            
+            <!-- Big Time -->
+            <div class="flex items-baseline clock-font text-white leading-none">
+                <span id="clock-hours" class="text-[12rem] font-bold">00</span>
+                <span class="text-[8rem] px-2 animate-pulse text-slate-500">:</span>
+                <span id="clock-minutes" class="text-[12rem] font-bold">00</span>
+            </div>
+            
+            <!-- Seconds (Smaller) -->
+            <div class="mt-4">
+                <span id="clock-seconds" class="clock-font text-[6rem] text-yellow-500 font-bold">00</span>
+            </div>
+
+            <!-- Current Status Label -->
+            <div class="mt-12 px-8 py-3 bg-slate-800 rounded-full border border-slate-700">
+                <span class="text-2xl text-blue-300 font-bold tracking-widest">現在時刻 Current Time</span>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        // --- 1. 資料設定 (Configuration) ---
+        const schedules = {
+            1: [ // 1/15 Thursday
+                { name: "第一節", time: "08:30-09:15", start: "08:30", end: "09:15", subject: "自 習" },
+                { name: "第二節", time: "09:25-10:10", start: "09:25", end: "10:10", subject: "數學 04" },
+                { name: "第三節", time: "10:20-11:05", start: "10:20", end: "11:05", subject: "自 習" },
+                { name: "第四節", time: "11:15-12:00", start: "11:15", end: "12:00", subject: "英語 02" },
+                { name: "第五節", time: "13:15-14:05", start: "13:15", end: "14:05", subject: "作 文" },
+                { name: "第六節", time: "14:20-15:05", start: "14:20", end: "15:05", subject: "自 習" },
+                { name: "第七節", time: "15:15-16:00", start: "15:15", end: "16:00", subject: "理化 12" }
+            ],
+            2: [ // 1/16 Friday
+                { name: "第一節", time: "08:30-09:00", start: "08:30", end: "09:00", subject: "自 習" },
+                { name: "第二節", time: "09:00-10:10", start: "09:00", end: "10:10", subject: "公民06 / 歷史08 / 地理09" },
+                { name: "第三節", time: "10:20-11:05", start: "10:20", end: "11:05", subject: "自 習" },
+                { name: "第四節", time: "11:15-12:00", start: "11:15", end: "12:00", subject: "國文 01" }
+            ]
+        };
+
+        let currentDayIdx = 1;
+        
+        // --- 2. DOM 元素 ---
+        const container = document.getElementById('schedule-container');
+        const btnDay1 = document.getElementById('btn-day1');
+        const btnDay2 = document.getElementById('btn-day2');
+        const elDate = document.getElementById('clock-date');
+        const elHours = document.getElementById('clock-hours');
+        const elMinutes = document.getElementById('clock-minutes');
+        const elSeconds = document.getElementById('clock-seconds');
+
+        // --- 3. 初始化 (Initialization) ---
+        function init() {
+            // 自動偵測日期以選擇預設頁籤
+            const now = new Date();
+            const month = now.getMonth() + 1;
+            const date = now.getDate();
+            
+            // 如果今天是 1/16，預設顯示第二天，否則顯示第一天
+            if (month === 1 && date === 16) {
+                currentDayIdx = 2;
+            } else {
+                currentDayIdx = 1;
+            }
+
+            renderSchedule();
+            updateClock();
+            
+            // 啟動定時器
+            setInterval(updateClock, 1000);       // 每秒更新時鐘
+            setInterval(checkActiveStatus, 1000); // 每秒檢查考試狀態
+        }
+
+        // --- 4. 切換日期功能 ---
+        window.setDay = function(dayIndex) {
+            currentDayIdx = dayIndex;
+            renderSchedule();
+            checkActiveStatus(); // 切換後立即檢查狀態
+        };
+
+        // --- 5. 渲染行程表 ---
+        function renderSchedule() {
+            // 更新按鈕樣式
+            if (currentDayIdx === 1) {
+                btnDay1.className = "px-6 py-2 rounded-lg text-xl font-bold bg-blue-600 text-white shadow-lg scale-105";
+                btnDay2.className = "px-6 py-2 rounded-lg text-xl font-bold bg-slate-700 text-slate-400 hover:bg-slate-600";
+            } else {
+                btnDay1.className = "px-6 py-2 rounded-lg text-xl font-bold bg-slate-700 text-slate-400 hover:bg-slate-600";
+                btnDay2.className = "px-6 py-2 rounded-lg text-xl font-bold bg-blue-600 text-white shadow-lg scale-105";
+            }
+
+            // 產生列表 HTML
+            const data = schedules[currentDayIdx];
+            let html = '';
+            
+            data.forEach((item, index) => {
+                // 自動調整字體大小 (科目名稱過長時縮小)
+                const subjectFontSize = item.subject.length > 10 ? 'text-3xl' : 'text-5xl';
+                
+                html += `
+                <div id="period-${index}" class="period-row flex items-center p-6 bg-slate-800 rounded-xl border border-slate-700 transition-all duration-300">
+                    <!-- 節次與時間 -->
+                    <div class="w-[30%] flex flex-col justify-center border-r border-slate-600 pr-4">
+                        <span class="period-name text-2xl text-slate-400 font-bold mb-1">${item.name}</span>
+                        <span class="period-time text-4xl text-white font-mono tracking-wider">${item.time}</span>
+                    </div>
+                    
+                    <!-- 科目名稱 -->
+                    <div class="w-[70%] pl-8 flex items-center justify-between">
+                        <span class="period-subject ${subjectFontSize} font-bold text-slate-100 tracking-wide">${item.subject}</span>
+                        <span class="status-badge hidden px-4 py-1 rounded text-lg font-bold uppercase tracking-widest">進行中 NOW</span>
+                    </div>
+                </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        // --- 6. 更新時鐘 ---
+        function updateClock() {
+            const now = new Date();
+            
+            // 顯示日期
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const dateStr = `${now.getMonth() + 1}/${now.getDate()} (${days[now.getDay()]})`;
+            elDate.innerText = dateStr;
+
+            // 顯示時間
+            const h = String(now.getHours()).padStart(2, '0');
+            const m = String(now.getMinutes()).padStart(2, '0');
+            const s = String(now.getSeconds()).padStart(2, '0');
+
+            elHours.innerText = h;
+            elMinutes.innerText = m;
+            elSeconds.innerText = s;
+        }
+
+        // --- 7. 檢查並高亮目前時段 (核心邏輯) ---
+        function checkActiveStatus() {
+            const now = new Date();
+            const currentMonth = now.getMonth() + 1;
+            const currentDate = now.getDate();
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+            
+            // 判斷今天是否為該分頁的考試日期
+            // 1/15 (Day 1) 或 1/16 (Day 2)
+            let isTodayTheExamDay = false;
+            if (currentDayIdx === 1 && currentMonth === 1 && currentDate === 15) isTodayTheExamDay = true;
+            if (currentDayIdx === 2 && currentMonth === 1 && currentDate === 16) isTodayTheExamDay = true;
+            
+            // 如需測試，可在此處強制設為 true: 
+            // isTodayTheExamDay = true; 
+
+            const data = schedules[currentDayIdx];
+
+            data.forEach((item, index) => {
+                const row = document.getElementById(`period-${index}`);
+                if (!row) return;
+
+                // 解析開始與結束時間
+                const [startH, startM] = item.start.split(':').map(Number);
+                const startTotal = startH * 60 + startM;
+
+                const [endH, endM] = item.end.split(':').map(Number);
+                const endTotal = endH * 60 + endM;
+
+                // 判斷是否在時間區間內
+                if (isTodayTheExamDay && currentMinutes >= startTotal && currentMinutes < endTotal) {
+                    
+                    // 觸發高亮 (如果尚未高亮)
+                    if (!row.classList.contains('active-period')) {
+                        // 清除其他高亮
+                        document.querySelectorAll('.period-row').forEach(r => {
+                            r.classList.remove('active-period');
+                            r.classList.add('bg-slate-800');
+                            r.querySelector('.status-badge').classList.add('hidden');
+                        });
+                        
+                        // 設定當前高亮
+                        row.classList.remove('bg-slate-800');
+                        row.classList.add('active-period');
+                        row.querySelector('.status-badge').classList.remove('hidden');
+                        
+                        // 自動捲動到該項目
+                        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                } else {
+                    // 移除高亮 (如果時間過了)
+                     if (row.classList.contains('active-period')) {
+                        row.classList.remove('active-period');
+                        row.classList.add('bg-slate-800');
+                        row.querySelector('.status-badge').classList.add('hidden');
+                     }
+                }
+            });
+        }
+
+        // 啟動程式
+        init();
+
+    </script>
+</body>
+</html>
